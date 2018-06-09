@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"sync"
 	"encoding/json"
+	"sort"
 )
 
 var (
 	exchange *Exchange
+	dynamicPriceEstimator priceEstimator
 
 	dealChan chan *deal
 	archiveDeal []*deal
@@ -35,16 +37,38 @@ func enableOrderGeneration(datasetSource *datasetSource, orderChan chan <- *orde
 	}
 }
 
+func priceHadnler(resp http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case "GET":
+		price := dynamicPriceEstimator.GetPrice()
+		data, err := json.Marshal(price)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		resp.Header().Set("Access-Control-Allow-Origin", "*")
+
+		if _, err := resp.Write(data); err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+}
+
 func buyOrderHandler(resp http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case "GET":
 		exchange.activeOrderMtx.Lock()
 		defer exchange.activeOrderMtx.Unlock()
+
 		data, err := json.Marshal(exchange.activeBuyOrderSlice)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+
+		resp.Header().Set("Access-Control-Allow-Origin", "*")
 
 		if _, err := resp.Write(data); err != nil {
 			fmt.Println(err)
@@ -60,11 +84,19 @@ func sellOrderHandler(resp http.ResponseWriter, req *http.Request) {
 	case "GET":
 		exchange.activeOrderMtx.Lock()
 		defer exchange.activeOrderMtx.Unlock()
+
+		less := func(i, j int) bool {
+			return exchange.activeSellOrderSlice[i].Price < exchange.activeSellOrderSlice[j].Price
+		}
+		sort.Slice(exchange.activeSellOrderSlice, less)
+
 		data, err := json.Marshal(exchange.activeSellOrderSlice)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
+
+		resp.Header().Set("Access-Control-Allow-Origin", "*")
 
 		if _, err := resp.Write(data); err != nil {
 			fmt.Println(err)
@@ -90,6 +122,8 @@ func dealsHandler(resp http.ResponseWriter, req *http.Request) {
 			}
 			archiveDealMtx.Unlock()
 
+			resp.Header().Set("Access-Control-Allow-Origin", "*")
+
 			if _, err := resp.Write(data); err != nil {
 				fmt.Println(err)
 				return
@@ -102,7 +136,7 @@ func dealsHandler(resp http.ResponseWriter, req *http.Request) {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	// staticPriceEstimator := newStaticPriceEstimator(1e4)
-	dynamicPriceEstimator := newDynamicPriceEstimator(1e4)
+	dynamicPriceEstimator = newDynamicPriceEstimator(1e4)
 	staticAmountGenerator := newStaticAmountGenerator(1e4, 1)
 	datasetSource := newDatasetSource(dynamicPriceEstimator, staticAmountGenerator)
 
@@ -146,6 +180,7 @@ func main() {
 	http.HandleFunc("/deals", dealsHandler)
 	http.HandleFunc("/order/sell", sellOrderHandler)
 	http.HandleFunc("/order/buy", buyOrderHandler)
+	http.HandleFunc("/price", priceHadnler)
 
 	listenAddr := "localhost:9000"
 	fmt.Printf("listen: %v\n", listenAddr)

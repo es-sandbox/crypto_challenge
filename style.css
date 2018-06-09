@@ -1,0 +1,21 @@
+#buy-order-block{
+    position: absolute;
+    left: 300px;
+    top: 0;
+}
+
+#deals-block {
+    position: absolute;
+    left: 600px;
+    top: 0;
+}
+
+.block {
+    margin: 10px;
+}
+
+#price {
+    position: absolute;
+    left: 900px;
+    top: 0;
+}

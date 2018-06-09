@@ -25,13 +25,13 @@ func (e *staticPriceEstimator) GetPrice() float64 {
 	return e.price
 }
 
-type dynamicPriceEstimator struct {
+type DynamicPriceEstimator struct {
 	price float64
 	priceMtx *sync.Mutex
 }
 
 func newDynamicPriceEstimator(initialPrice float64) priceEstimator {
-	e :=  &dynamicPriceEstimator{
+	e :=  &DynamicPriceEstimator{
 		price: initialPrice,
 		priceMtx: &sync.Mutex{},
 	}
@@ -40,7 +40,7 @@ func newDynamicPriceEstimator(initialPrice float64) priceEstimator {
 }
 
 // NOTE: must be run as goroutine
-func (e *dynamicPriceEstimator) activate() priceEstimator {
+func (e *DynamicPriceEstimator) activate() priceEstimator {
 	for {
 		time.Sleep(time.Second * 1)
 
@@ -59,7 +59,7 @@ func (e *dynamicPriceEstimator) activate() priceEstimator {
 	}
 }
 
-func (e *dynamicPriceEstimator) GetPrice() float64 {
+func (e *DynamicPriceEstimator) GetPrice() float64 {
 	e.priceMtx.Lock()
 	defer e.priceMtx.Unlock()
 	return e.price
