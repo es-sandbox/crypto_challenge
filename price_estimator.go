@@ -46,7 +46,7 @@ func (e *DynamicPriceEstimator) activate() priceEstimator {
 
 		e.priceMtx.Lock()
 		increase := rand.Intn(2) == 0
-		maxPercent := float64(3)
+		maxPercent := float64(0.1)
 		percent := rand.Float64() * maxPercent
 
 		if increase {

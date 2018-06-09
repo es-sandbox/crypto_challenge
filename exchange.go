@@ -10,18 +10,22 @@ import (
 )
 
 type Exchange struct {
-	orderChan <-chan *order
-	dealChan  chan *deal
+	orderChan chan *order // input data
+	dealChan  chan *deal  // output data
+
+	dynamicPriceEstimator priceEstimator
 
 	activeOrderMtx       *sync.Mutex
 	activeSellOrderSlice []*order
 	activeBuyOrderSlice  []*order
 }
 
-func newExchange(orderChan <-chan *order, dealChan chan *deal) *Exchange {
+func newExchange(orderChan chan *order, dealChan chan *deal, dynamicPriceEstimator priceEstimator) *Exchange {
 	return &Exchange{
 		orderChan: orderChan,
 		dealChan: dealChan,
+
+		dynamicPriceEstimator: dynamicPriceEstimator,
 
 		activeOrderMtx:       &sync.Mutex{},
 		activeSellOrderSlice: make([]*order, 0),
@@ -38,10 +42,8 @@ func (e *Exchange) start() {
 		switch order.OrderType {
 		case sellOrderType:
 			e.activeSellOrderSlice = append(e.activeSellOrderSlice, order)
-			fmt.Println("+")
 		case buyOrderType:
 			e.activeBuyOrderSlice = append(e.activeBuyOrderSlice, order)
-			fmt.Println("-")
 		default:
 			log.Println("[exchange]: <Unknown order type>")
 		}
@@ -123,5 +125,32 @@ func (e *Exchange) analyzeSession() {
 		}
 
 		return
+	}
+}
+
+// NOTE: must be run as goroutine
+func (e *Exchange) cutOff() {
+	for {
+		e.activeOrderMtx.Lock()
+
+		currentPrice := e.dynamicPriceEstimator.GetPrice()
+
+		for _, sellOrder := range e.activeSellOrderSlice {
+			if sellOrder.Price <= currentPrice*1.02 {
+				fmt.Println("CUT OFF SELL")
+				e.orderChan <- newOrder(buyOrderType, sellOrder.Price, sellOrder.Amount)
+			}
+		}
+
+		for _, buyOrder := range e.activeBuyOrderSlice {
+			if buyOrder.Price >= currentPrice*0.98 {
+				fmt.Println("CUT OFF BUY")
+				e.orderChan <- newOrder(sellOrderType, buyOrder.Price, buyOrder.Amount)
+			}
+		}
+
+		e.activeOrderMtx.Unlock()
+
+		time.Sleep(time.Second)
 	}
 }

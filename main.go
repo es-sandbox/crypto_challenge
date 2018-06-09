@@ -3,8 +3,6 @@ package main
 import (
 	"time"
 	"math/rand"
-	"os"
-	"os/signal"
 	"fmt"
 	"net/http"
 	"sync"
@@ -31,6 +29,7 @@ func enableOrderGeneration(datasetSource *datasetSource, orderChan chan <- *orde
 		} else {
 			order = datasetSource.getNextFilteredBuyOrder()
 		}
+		fmt.Println("neworder")
 		orderChan <- order
 
 		time.Sleep(timeout)
@@ -61,6 +60,11 @@ func buyOrderHandler(resp http.ResponseWriter, req *http.Request) {
 	case "GET":
 		exchange.activeOrderMtx.Lock()
 		defer exchange.activeOrderMtx.Unlock()
+
+		less := func(i, j int) bool {
+			return exchange.activeBuyOrderSlice[i].Price > exchange.activeBuyOrderSlice[j].Price
+		}
+		sort.Slice(exchange.activeBuyOrderSlice, less)
 
 		data, err := json.Marshal(exchange.activeBuyOrderSlice)
 		if err != nil {
@@ -135,20 +139,20 @@ func dealsHandler(resp http.ResponseWriter, req *http.Request) {
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	// staticPriceEstimator := newStaticPriceEstimator(1e4)
 	dynamicPriceEstimator = newDynamicPriceEstimator(1e4)
 	staticAmountGenerator := newStaticAmountGenerator(1e4, 1)
 	datasetSource := newDatasetSource(dynamicPriceEstimator, staticAmountGenerator)
 
-	orderChanBufferSize := 20
+	orderChanBufferSize := 2000
 	orderChan := make(chan *order, orderChanBufferSize)
 	go enableOrderGeneration(datasetSource, orderChan, time.Millisecond * 500)
 
-	dealChanBufferSize := 20
+	dealChanBufferSize := 2000
 	dealChan = make(chan *deal, dealChanBufferSize)
-	exchange = newExchange(orderChan, dealChan)
+	exchange = newExchange(orderChan, dealChan, dynamicPriceEstimator)
 	go exchange.start()
 
+	/*
 	shutdownChan := make(chan os.Signal, 1)
 	signal.Notify(shutdownChan, os.Interrupt)
 	go func(){
@@ -160,6 +164,7 @@ func main() {
 			// sig is a ^C, handle it
 		}
 	}()
+	*/
 
 	archiveDeal = make([]*deal, 0)
 	archiveDealMtx = &sync.Mutex{}
@@ -176,6 +181,7 @@ func main() {
 	}()
 
 	go exchange.enableAnalyze(time.Millisecond * 1000)
+	go exchange.cutOff()
 
 	http.HandleFunc("/deals", dealsHandler)
 	http.HandleFunc("/order/sell", sellOrderHandler)

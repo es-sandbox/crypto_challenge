@@ -43,7 +43,7 @@ xhr2.onreadystatechange = function() { // (3)
         var table = document.getElementById("buy-order");
         var buyOrderList = JSON.parse(xhr2.responseText);
         buyOrderList.forEach(function(item, i, buyOrderList) {
-            if (i + 20 < buyOrderList.length) {
+            if (i >= 20) {
                 return
             }
 
