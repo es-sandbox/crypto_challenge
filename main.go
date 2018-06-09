@@ -11,14 +11,22 @@ import (
 )
 
 var (
+	// Exchange is primary object that collect orders and make deals when it's possible
 	exchange *Exchange
+
+	// dynamicPriceEstimator is object that responsible for reporting current bitcoin price in USD
 	dynamicPriceEstimator priceEstimator
 
+	// dealChan is chan in which exchange send new deals
+	// also http server get data from thet chan and render to website
 	dealChan chan *deal
+
+	// archiveDeal is slice of recently made deals
 	archiveDeal []*deal
 	archiveDealMtx *sync.Mutex
 )
 
+// enableOrderGeneration is goroutine that generate random order time-to-time with datasetSource
 // NOTE: must be run as goroutine
 func enableOrderGeneration(datasetSource *datasetSource, orderChan chan <- *order, timeout time.Duration) {
 	// TODO(evg): using time.Ticker instead of sleep
@@ -139,12 +147,19 @@ func dealsHandler(resp http.ResponseWriter, req *http.Request) {
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
+
+	// dynamicPriceEstimator is object that dynamically emulate bitcoin price
 	dynamicPriceEstimator = newDynamicPriceEstimator(1e4)
+
+	// staticAmountGenerator is object that generate amount of BTC for orders
 	staticAmountGenerator := newStaticAmountGenerator(1e4, 1)
+
+	// datasetSource is object that responsible for creating orders
 	datasetSource := newDatasetSource(dynamicPriceEstimator, staticAmountGenerator)
 
 	orderChanBufferSize := 2000
 	orderChan := make(chan *order, orderChanBufferSize)
+	// enableOrderGeneration is goroutine that generates orders
 	go enableOrderGeneration(datasetSource, orderChan, time.Millisecond * 500)
 
 	dealChanBufferSize := 2000
